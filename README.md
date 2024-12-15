@@ -1,5 +1,156 @@
 
-# decompress-json-etl
+# Pipeline ETL em Python: Transformando JSON Compactado em Tabelas Iceberg
+
+Uma pipeline ETL baseado em Python para processar dados JSON compactados em tabelas estruturadas no Iceberg. Este projeto suporta a geração de dados fictícios, armazenamento eficiente e processamento escalável de dados com PySpark.
+
+---
+
+## Recursos
+
+- Geração de conjuntos de dados fictícios para clientes, pedidos e pagamentos usando `Faker`.
+- Armazenamento de dados no formato JSON compactado dentro de arquivos Parquet.
+- Descompactação e transformação de dados JSON em tabelas estruturadas com PySpark.
+- Carregamento dos dados processados em tabelas Iceberg com esquemas predefinidos.
+- Suporte à imposição de esquemas e fluxos de ETL escaláveis.
+
+---
+
+## Instalação
+
+1. Clone o repositório:
+   ```bash
+   git clone https://github.com/your-repo/decompress-json-etl.git
+   ```
+
+2. Navegue até o diretório do projeto:
+   ```bash
+   cd decompress-json-etl
+   ```
+
+3. Instale as dependências usando `uv`:
+   ```bash
+   uv setup
+   ```
+
+---
+
+## Uso
+
+### 1. Gerar Dados Fictícios
+Execute o script para gerar dados JSON compactados:
+```bash
+python generate_json.py --num_orders <numero_de_pedidos> --output_path <caminho_do_arquivo_de_saida>
+```
+
+**Exemplo:**
+```bash
+python generate_json.py --num_orders 100 --output_path ./data
+```
+
+### 2. Processar Dados em Tabelas Iceberg
+Use o script ETL para descompactar e carregar os dados nas tabelas Iceberg:
+```bash
+python process_json.py --input_path <caminho_do_arquivo_de_entrada>
+```
+
+**Exemplo:**
+```bash
+python process_json.py --input_path ./data/compressed_json.parquet
+```
+
+---
+
+## Como Funciona
+
+### Geração de Dados
+- Dados fictícios para clientes, pedidos e pagamentos são criados usando a biblioteca `Faker`.
+- Os dados são compactados no formato JSON e armazenados em arquivos Parquet.
+
+### Transformação de Dados
+- O JSON compactado é descompactado usando uma UDF em Scala.
+- O PySpark transforma os dados JSON em registros estruturados para:
+  - Pedidos
+  - Clientes
+  - Itens do Pedido
+  - Pagamentos
+
+### Carregamento de Dados
+- Os dados transformados são carregados em tabelas Iceberg, aplicando esquemas e propriedades predefinidos.
+
+---
+
+## Definições de Esquema
+
+### Tabela de Pedidos (Orders)
+| Coluna        | Tipo               | Descrição                    |
+|---------------|:------------------:|-----------------------------|
+| order_id      | INT                | Identificador único do pedido. |
+| order_date    | TIMESTAMP          | Data e hora do pedido.      |
+| order_price   | DECIMAL(15,2)      | Preço total do pedido.      |
+
+### Tabela de Clientes (Clients)
+| Coluna        | Tipo               | Descrição                   |
+|---------------|:------------------:|-----------------------------|
+| order_id      | INT               | Identificador vinculado ao pedido. |
+| client_id     | INT               | Identificador único do cliente. |
+| first_name    | STRING            | Primeiro nome do cliente.  |
+| last_name     | STRING            | Sobrenome do cliente.      |
+| cpf           | STRING            | CPF brasileiro do cliente. |
+| rg            | STRING            | RG brasileiro do cliente.  |
+| email         | STRING            | Endereço de e-mail do cliente. |
+| birth_date    | DATE              | Data de nascimento do cliente. |
+
+### Tabela de Itens do Pedido (Order Items)
+| Coluna           | Tipo               | Descrição                   |
+|------------------|:------------------:|-----------------------------|
+| order_id         | INT                | Identificador vinculado ao pedido. |
+| id               | INT                | Identificador único do item. |
+| item_name        | STRING             | Nome do item.              |
+| item_price       | DECIMAL(15,2)      | Preço do item.             |
+| item_description | STRING             | Descrição do item.         |
+
+### Tabela de Pagamentos (Payments)
+| Coluna                    | Tipo               | Descrição                   |
+|---------------------------|:------------------:|-----------------------------|
+| order_id                  | INT                | Identificador vinculado ao pedido. |
+| id                        | INT                | Identificador único do pagamento. |
+| method                    | STRING             | Método de pagamento (dinheiro, cartão de crédito, etc.). |
+| amount                    | DECIMAL(15,2)      | Valor total pago.           |
+| tranch_value              | DECIMAL(15,2)      | Valor de cada parcela (se aplicável). |
+| tranch_payment_date       | DATE               | Data do pagamento da parcela. |
+| tranch_installment_number | SMALLINT           | Número da parcela.          |
+
+---
+
+## Requisitos
+
+- Python 3.13 ou superior
+- PySpark
+- JARs de runtime do Iceberg
+- Ambiente Hadoop
+- UDF em Scala (função de descompactação)
+
+---
+
+## Licença
+
+Este projeto está licenciado sob a licença MIT. Veja [LICENSE](./LICENSE) para mais detalhes.
+
+---
+
+## Contribuição
+
+Contribuições são bem-vindas! Por favor, faça um fork do repositório e envie um pull request.
+
+---
+
+## Contato
+
+Para dúvidas ou suporte, entre em contato pelo e-mail [leonardovsr.dev@gmail.com].
+
+---
+
+# Python ETL Pipeline: Transforming compressed JSON into Iceberg tables
 
 A Python-based ETL pipeline for processing compressed JSON data into structured Iceberg tables. This project supports synthetic data generation, efficient storage, and scalable data processing with PySpark.
 
@@ -30,13 +181,6 @@ A Python-based ETL pipeline for processing compressed JSON data into structured 
 3. Install dependencies using `uv`:
    ```bash
    uv setup
-   ```
-
-4. (OPTIONAL) Compile the Scala UDF
-
-   If you don't want to use the pre-compiled jar, it can be compiled with:
-   ```bash
-   sbt clean package
    ```
 
 ---
