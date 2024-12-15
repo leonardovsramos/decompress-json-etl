@@ -33,7 +33,8 @@ A Python-based ETL pipeline for processing compressed JSON data into structured 
    ```
 
 4. (OPTIONAL) Compile the Scala UDF
-If you don't want to use the pre-compiled jar, it can be compiled with:
+
+   If you don't want to use the pre-compiled jar, it can be compiled with:
    ```bash
    sbt clean package
    ```
