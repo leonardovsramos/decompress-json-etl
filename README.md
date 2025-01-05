@@ -1,6 +1,6 @@
 # Processing Highly Compressed JSON at Scale on AWS 🚀
 
-Imagine dealing with a production OLTP database with no indexing, poor performance, and billions of records in the main business tables. Sounds like a nightmare for any data engineer, right? Recently, we faced exactly this challenge in one of the projects where we worked as a Data Engineer.
+Imagine dealing with a production OLTP database with no indexing, poor performance, and billions of records in the main business tables. Sounds like a nightmare for any data engineer, right? Recently, we faced exactly this challenge in one of the projects where we worked as Data Engineers.
 
 ## 🎯 The Challenge:
 Extract information from this source database and make it available to users within AWS, despite the sluggish performance and massive size of the tables.
