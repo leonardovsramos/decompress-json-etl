@@ -1,176 +1,104 @@
+# Processing Highly Compressed JSON at Scale on AWS 🚀
 
-# Pipeline ETL em Python: Transformando JSON Compactado em Tabelas Iceberg
+Imagine dealing with a production OLTP database with no indexing, poor performance, and billions of records in the main business tables. Sounds like a nightmare for any data engineer, right? Recently, we faced exactly this challenge in one of the projects where we worked as a Data Engineer.
 
-Uma pipeline ETL baseado em Python para processar dados JSON compactados em tabelas estruturadas no Iceberg. Este projeto suporta a geração de dados fictícios, armazenamento eficiente e processamento escalável de dados com PySpark.
+## 🎯 The Challenge:
+Extract information from this source database and make it available to users within AWS, despite the sluggish performance and massive size of the tables.
 
----
+## 💡 The Insight:
+During our investigation, we discovered a column that stored the same information as the tables with billions of records but in JSON format compressed with **GZIP**. While optimized for storage, this column contained records with more than **800,000 characters each**!
 
-## Recursos
+## 🔧 The Strategic Solution:
+We decided to ingest only this compressed column into **S3**, process it, and decompress it using **AWS Glue** with **PySpark**. The data was transformed into multiple tables organized in the **Iceberg** format, optimizing consumption through **AWS Athena**. Additionally, we created summarized views in the **Data Warehouse**, making the data more accessible and analysis-ready.
 
-- Geração de conjuntos de dados fictícios para clientes, pedidos e pagamentos usando `Faker`.
-- Armazenamento de dados no formato JSON compactado dentro de arquivos Parquet.
-- Descompactação e transformação de dados JSON em tabelas estruturadas com PySpark.
-- Carregamento dos dados processados em tabelas Iceberg com esquemas predefinidos.
-- Suporte à imposição de esquemas e fluxos de ETL escaláveis.
+## 🚀 Exploring Different Approaches:
+We tested decompression and transformation using:
+- **Pandas + PySpark UDFs**: efficient but with the overhead of transforming between Python and the JVM.
+- **Scala**: eliminated the Python → JVM transformation, resulting in better performance.
 
----
+## 💾 Simulation and Reproducibility:
+We created a GitHub repository to simulate the database behavior by generating Parquet files that replicate the original structure. From there, we processed the data and made it available in **Iceberg** tables using a Hadoop catalog.
 
-## Instalação
+This experience reinforced something we always believe: even in adverse scenarios, with detailed analysis it is possible to find robust solutions for complex data processing challenges.
 
-1. Clone o repositório:
-   ```bash
-   git clone https://github.com/your-repo/decompress-json-etl.git
-   ```
+If you’ve faced similar challenges, share your experiences in the comments! Let’s exchange ideas and insights! 🚀💬
 
-2. Navegue até o diretório do projeto:
-   ```bash
-   cd decompress-json-etl
-   ```
+## 📖 Step by step
 
-3. Instale as dependências usando `uv`:
-   ```bash
-   uv setup
-   ```
+### 1. UDF
+Here we show the UDF code in Scala and the manual compilation of the JAR file. This section is optional and you can use the pre-compiled
+file available in the repository.
 
----
+#### 1.1 Scala code
 
-## Uso
+PySpark needs a JAR file containing our UDF in Scala in order to run it. So, starting with a basic Scala
+project, create a file called *Decompress.scala* containing the following code:
 
-### 1. Gerar Dados Fictícios
-Execute o script para gerar dados JSON compactados:
-```bash
-python generate_json.py --num_orders <numero_de_pedidos> --output_path <caminho_do_arquivo_de_saida>
+  ```scala
+  import org.apache.spark.sql.api.java.UDF1
+  import java.io.ByteArrayInputStream
+  import java.util.zip.GZIPInputStream
+
+  class Decompress extends UDF1[Array[Byte], Array[Byte]] {
+    override def call(t1: Array[Byte]): Array[Byte] = {
+      val inputStream = new GZIPInputStream(new ByteArrayInputStream(t1))
+      org.apache.commons.io.IOUtils.toByteArray(inputStream)
+    }
+  }
+  ```
+
+Note that our Decompress class is extending Spark's UDF1 which accepts one argument, in this case
+an array of bytes (compressed data) and we also expect the output to be an array of bytes (uncompressed data).
+
+Now that we have our code complete, we can compile it with sbt:
+
+`sbt clean package`
+
+The necessary JAR file can be found in the target folder of your project.
+
+#### 1.2 Python code
+
+To allow PySpark to recognize our UDF, we need to add the JAR file when we create our Spark session:
+
+```python
+spark = (SparkSession.builder
+.config(“spark.jars”, “./scala_udf.jar”)
+.getOrCreate())
 ```
+Now let's register it in the SQL context so we can call it with Spark SQL:
 
-**Exemplo:**
-```bash
-python generate_json.py --num_orders 100 --output_path ./data
+```python
+sqlContext = SQLContext(spark.sparkContext)
+spark.udf.registerJavaFunction(“decompress_scala”, “Decompress”, T.BinaryType())
 ```
+Here decompress_scala will be the name registered in the SQL context, Decompress is the name of our UDF class and BinaryType
+refers to its return type.
 
-### 2. Processar Dados em Tabelas Iceberg
-Use o script ETL para descompactar e carregar os dados nas tabelas Iceberg:
-```bash
-python process_json.py --input_path <caminho_do_arquivo_de_entrada>
+To use it, just add the following line of code:
+```python
+df = spark.sql(“select *, decode(decompress_scala(compressed_json), ‘utf8’) as json from df”)
 ```
+Here, we used decode to convert our binary output into a utf-8 string, as this was necessary in the chosen example.
 
-**Exemplo:**
-```bash
-python process_json.py --input_path ./data/compressed_json.parquet
-```
+#### 1.3 Execution results
+Reading the provided data.parquet file, we can decompress and decode the gzipped JSON column:
 
----
+![Decompress result](./img.png)
 
-## Como Funciona
+### 2. Main code
+#### 2.1 Features
 
-### Geração de Dados
-- Dados fictícios para clientes, pedidos e pagamentos são criados usando a biblioteca `Faker`.
-- Os dados são compactados no formato JSON e armazenados em arquivos Parquet.
+- Generation of dummy datasets for customers, orders and payments using `Faker`.
+- Storing data in compressed JSON format within Parquet files.
+- Decompressing and transforming JSON data into structured tables with PySpark.
+- Loading processed data into Iceberg tables with predefined schemas.
+- Support for imposing schemas and scalable ETL workflows.
 
-### Transformação de Dados
-- O JSON compactado é descompactado usando uma UDF em Scala.
-- O PySpark transforma os dados JSON em registros estruturados para:
-  - Pedidos
-  - Clientes
-  - Itens do Pedido
-  - Pagamentos
-
-### Carregamento de Dados
-- Os dados transformados são carregados em tabelas Iceberg, aplicando esquemas e propriedades predefinidos.
-
----
-
-## Definições de Esquema
-
-### Tabela de Pedidos (Orders)
-| Coluna        | Tipo               | Descrição                    |
-|---------------|:------------------:|-----------------------------|
-| order_id      | INT                | Identificador único do pedido. |
-| order_date    | TIMESTAMP          | Data e hora do pedido.      |
-| order_price   | DECIMAL(15,2)      | Preço total do pedido.      |
-
-### Tabela de Clientes (Clients)
-| Coluna        | Tipo               | Descrição                   |
-|---------------|:------------------:|-----------------------------|
-| order_id      | INT               | Identificador vinculado ao pedido. |
-| client_id     | INT               | Identificador único do cliente. |
-| first_name    | STRING            | Primeiro nome do cliente.  |
-| last_name     | STRING            | Sobrenome do cliente.      |
-| cpf           | STRING            | CPF brasileiro do cliente. |
-| rg            | STRING            | RG brasileiro do cliente.  |
-| email         | STRING            | Endereço de e-mail do cliente. |
-| birth_date    | DATE              | Data de nascimento do cliente. |
-
-### Tabela de Itens do Pedido (Order Items)
-| Coluna           | Tipo               | Descrição                   |
-|------------------|:------------------:|-----------------------------|
-| order_id         | INT                | Identificador vinculado ao pedido. |
-| id               | INT                | Identificador único do item. |
-| item_name        | STRING             | Nome do item.              |
-| item_price       | DECIMAL(15,2)      | Preço do item.             |
-| item_description | STRING             | Descrição do item.         |
-
-### Tabela de Pagamentos (Payments)
-| Coluna                    | Tipo               | Descrição                   |
-|---------------------------|:------------------:|-----------------------------|
-| order_id                  | INT                | Identificador vinculado ao pedido. |
-| id                        | INT                | Identificador único do pagamento. |
-| method                    | STRING             | Método de pagamento (dinheiro, cartão de crédito, etc.). |
-| amount                    | DECIMAL(15,2)      | Valor total pago.           |
-| tranch_value              | DECIMAL(15,2)      | Valor de cada parcela (se aplicável). |
-| tranch_payment_date       | DATE               | Data do pagamento da parcela. |
-| tranch_installment_number | SMALLINT           | Número da parcela.          |
-
----
-
-## Requisitos
-
-- Python 3.13 ou superior
-- PySpark
-- JARs de runtime do Iceberg
-- Ambiente Hadoop
-- UDF em Scala (função de descompactação)
-
----
-
-## Licença
-
-Este projeto está licenciado sob a licença MIT. Veja [LICENSE](./LICENSE) para mais detalhes.
-
----
-
-## Contribuição
-
-Contribuições são bem-vindas! Por favor, faça um fork do repositório e envie um pull request.
-
----
-
-## Contato
-
-Para dúvidas ou suporte, entre em contato pelo e-mail [leonardovsr.dev@gmail.com].
-
----
-
-# Python ETL Pipeline: Transforming compressed JSON into Iceberg tables
-
-A Python-based ETL pipeline for processing compressed JSON data into structured Iceberg tables. This project supports synthetic data generation, efficient storage, and scalable data processing with PySpark.
-
----
-
-## Features
-
-- Generate synthetic datasets for clients, orders, and payments using `Faker`.
-- Store data in compressed JSON format within Parquet files.
-- Decompress and transform JSON data into structured tables with PySpark.
-- Load processed data into Iceberg tables with predefined schemas.
-- Supports schema enforcement and scalable ETL workflows.
-
----
-
-## Installation
+#### 2.2 Installation
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-repo/decompress-json-etl.git
+   git clone https://github.com/leonardovsramos/decompress-json-etl.git
    ```
 
 2. Navigate to the project directory:
@@ -178,19 +106,19 @@ A Python-based ETL pipeline for processing compressed JSON data into structured 
    cd decompress-json-etl
    ```
 
-3. Install dependencies using `uv`:
+3. Install the dependencies using `uv`:
    ```bash
    uv setup
    ```
 
 ---
 
-## Usage
+#### 2.3 Usage
 
-### 1. Generate Synthetic Data
+##### 2.3.1 Generating dummy data
 Run the script to generate compressed JSON data:
 ```bash
-python generate_json.py --num_orders <number_of_orders> --output_path <output_file_path>
+python generate_json.py --num_orders <order_number> --output_path <output_file_path>
 ```
 
 **Example:**
@@ -198,10 +126,10 @@ python generate_json.py --num_orders <number_of_orders> --output_path <output_fi
 python generate_json.py --num_orders 100 --output_path ./data
 ```
 
-### 2. Process Data into Iceberg Tables
-Use the ETL script to decompress and load data into Iceberg tables:
+##### 2.3.2 Processing data in Iceberg tables
+Use the ETL script to unpack and load the data into Iceberg tables:
 ```bash
-python process_json.py --input_path <input file path>
+python process_json.py --input_path <input_file_path>
 ```
 
 **Example:**
@@ -211,90 +139,72 @@ python process_json.py --input_path ./data/compressed_json.parquet
 
 ---
 
-## How It Works
+#### 2.4 How it works
 
-### Data Generation
-- Synthetic data for clients, orders, and payments is created using the `Faker` library.
-- Data is compressed into JSON format and stored in Parquet files.
+##### 2.4.1 Data generation
+- Fictitious data for customers, orders and payments is created using the `Faker` library.
+- The data is compressed into JSON format and stored in Parquet files.
 
-### Data Transformation
-- Compressed JSON is decompressed using a Scala UDF.
+##### 2.4.2 Data transformation
+- The compressed JSON is decompressed using a UDF in Scala.
 - PySpark transforms the JSON data into structured records for:
-  - Orders
-  - Clients
-  - Order Items
-  - Payments
+    - Orders
+    - Customers
+    - Order items
+    - Payments
 
-### Data Loading
-- Transformed data is loaded into Iceberg tables, enforcing predefined schemas and properties.
+##### 2.4.3 Loading data
+- The transformed data is loaded into Iceberg tables, applying predefined schemas.
 
----
+#### 2.5 Schema definitions
 
-## Schema Definitions
+##### 2.5.1 Orders table
+| Column | Type | Description                     |
+|---------------|:------------------:|---------------------------------|
+| order_id | INT | Unique identifier of the order. |
+| order_date | TIMESTAMP | Order timestamp.                |
+| order_price | DECIMAL(15,2) | Total order price.              |
 
-### Orders Table
-| Column       | Type               | Description           |
-|--------------|:------------------:|-----------------------|
-| order_id     | INT                | Unique identifier for the order. |
-| order_date   | TIMESTAMP          | Date and time of the order. |
-| order_price  | DECIMAL(15,2)      | Total price of the order. |
+##### 2.5.2 Clients table
+| Column | Type | Description                       |
+|---------------|:------------------:|-----------------------------------|
+| order_id | INT | Identifier linked to the order.   |
+| client_id | INT | Unique client identifier.         |
+| first_name | STRING | Customer's first name.            |
+| last_name | STRING | Customer's last name.             |
+| cpf | STRING | Customer's Brazilian CPF.         |
+| rg | STRING | customer's Brazilian Personal ID. |
+| email | STRING | Customer's email address.         |
+| birth_date | DATE | Customer's date of birth.         |
 
-### Clients Table
-| Column       | Type               | Description           |
-|--------------|:------------------:|-----------------------|
-| order_id     | INT               | Identifier linking to the order. |
-| client_id    | INT               | Unique identifier for the client. |
-| first_name   | STRING            | Client's first name. |
-| last_name    | STRING            | Client's last name. |
-| cpf          | STRING            | Brazilian CPF identifier. |
-| rg           | STRING            | Brazilian RG identifier. |
-| email        | STRING            | Client's email address. |
-| birth_date   | DATE              | Client's date of birth. |
+##### 2.5.3 Order Items table
+| Column | Type | Description                     |
+|------------------|:------------------:|---------------------------------|
+| order_id | INT | Identifier linked to the order. |
+| id | INT | Unique identifier of the item.  |
+| item_name | STRING | Item's name.                    |
+| item_price | DECIMAL(15,2) | Item's price.                   |
+| item_description | STRING | Item's description.             |
 
-### Order Items Table
-| Column            | Type              | Description           |
-|-------------------|:-----------------:|-----------------------|
-| order_id          | INT               | Identifier linking to the order. |
-| id                | INT               | Unique identifier for the item. |
-| item_name         | STRING            | Name of the item. |
-| item_price        | DECIMAL(15,2)     | Price of the item. |
-| item_description  | STRING            | Description of the item. |
+##### 2.5.4 Payments table
+| Column | Type | Description |
+|---------------------------|:------------------:|-----------------------------|
+| order_id | INT | Identifier linked to the order. |
+| id | INT | Unique identifier of the payment. |
+| method | STRING | Payment method (cash, credit card, etc.). |
+| amount | DECIMAL(15,2) | Total amount paid. |
+| tranch_value | DECIMAL(15,2) | Amount of each installment (if applicable). |
+| tranch_payment_date | DATE | Installment payment date. |
+| tranch_installment_number | SMALLINT | Installment number. |
 
-### Payments Table
-| Column                     | Type              | Description           |
-|----------------------------|:-----------------:|-----------------------|
-| order_id                   | INT               | Identifier linking to the order. |
-| id                         | INT               | Unique identifier for the payment. |
-| method                     | STRING            | Payment method (cash, credit card, etc.). |
-| amount                     | DECIMAL(15,2)     | Total amount paid. |
-| tranch_value               | DECIMAL(15,2)     | Value of each installment (if applicable). |
-| tranch_payment_date        | DATE              | Date of the installment payment. |
-| tranch_installment_number  | SMALLINT          | Installment number. |
+## Repository on GitHub
+https://github.com/leonardovsramos/decompress-json-etl
 
----
+## References
+https://spark.apache.org/docs/3.5.1/api/java/org/apache/spark/sql/api/java/UDF1.html
+https://spark.apache.org/docs/3.5.2/sql-ref-functions-udf-scalar.html
 
-## Requirements
+## Authors
+[Leonardo Vieira dos Santos Ramos](https://www.linkedin.com/in/leonardolvsr/)
 
-- Python 3.13 or higher
-- PySpark
-- Iceberg runtime JARs
-- Hadoop environment
-- Scala UDF (decompression function)
-
----
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](./LICENSE) for more details.
-
----
-
-## Contributing
-
-Contributions are welcome! Please fork the repository and submit a pull request.
-
----
-
-## Contact
-
-For questions or support, please contact [leonardovsr.dev@gmail.com].
+[Vítor Rodrigues Gôngora](https://www.linkedin.com/in/vitorgongora/)
